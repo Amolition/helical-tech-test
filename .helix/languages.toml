@@ -1,0 +1,4 @@
+[[language]]
+name = "python"
+language-servers = ["basedpyright", "ruff"]
+auto-format = true
