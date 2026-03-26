@@ -31,8 +31,8 @@ class Gene(BaseModel):
 
 
 class Expression(BaseModel):
-    cell = models.ForeignKey(Cell, on_delete=models.PROTECT)
-    gene = models.ForeignKey(Gene, on_delete=models.PROTECT)
+    cell = models.ForeignKey(Cell, related_name="expressions", on_delete=models.PROTECT)
+    gene = models.ForeignKey(Gene, related_name="expressions", on_delete=models.PROTECT)
     value = models.FloatField()
 
 
@@ -43,11 +43,16 @@ class Embedding(BaseModel):
         ("OE", "Overexpression"),
         ("NA", "None"),
     ]
-    cell = models.ForeignKey(Cell, on_delete=models.PROTECT)
+    cell = models.ForeignKey(
+        Cell,
+        related_name="embeddings_for_cell",
+        on_delete=models.PROTECT,
+    )
     perturbation_gene = models.ForeignKey(
         Gene,
         blank=True,
         null=True,
+        related_name="embeddings_where_perturbed",
         on_delete=models.PROTECT,
     )
     perturbation_type = models.CharField(

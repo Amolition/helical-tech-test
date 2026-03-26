@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('db', '0001_initial'),
+        ("db", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='embedding',
-            name='value',
+            model_name="embedding",
+            name="value",
             field=models.JSONField(default=0),
             preserve_default=False,
         ),

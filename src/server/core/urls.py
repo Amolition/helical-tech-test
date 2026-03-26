@@ -20,6 +20,8 @@ from django.contrib.auth.models import User
 from django.db import IntegrityError, OperationalError
 from django.urls import path
 
+from server.rest_api.api import api
+
 try:
     # Create Admin User (for demo purposes only)
     User.objects.create_superuser("admin", None, "1234")
@@ -30,4 +32,5 @@ except OperationalError as err:
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/", api.urls),
 ]
