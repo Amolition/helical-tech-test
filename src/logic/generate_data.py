@@ -1,26 +1,21 @@
-from dataclasses import dataclass
 import random
 import string
-from typing import Literal
-import numpy as np
-import scipy.sparse as spsparse
-import pandas as pd
-import anndata as ad
 
-# track total_obs_count to ensure unique cell labels if called multiple times
+import anndata as ad
+import numpy as np
+import pandas as pd
+import scipy.sparse as spsparse
+
+from logic.consts import VAR_POOL_SIZE
+from logic.types import PertSpec, Var
+
+# track total_obs_count to ensure unique cell labels between data generations
 total_obs_count = 0
 
 # options for categorical metadata
 cell_type_list = ["B", "T", "Monocyte"]
 donor_list = [f"Patient {p}" for p in string.ascii_uppercase]
 chromosome_list = [f"{i:0>2d}" for i in range(1, 23)] + ["X", "Y"]
-
-
-@dataclass
-class Var:
-    label: str
-    symbol: str
-    chromosome: str
 
 
 # pool from which to randomly select genes on each data generation
@@ -30,11 +25,13 @@ var_pool = [
         "".join(random.choices(string.ascii_uppercase + string.digits, k=6)),
         random.choice(chromosome_list),
     )
-    for i in range(10000)
+    for i in range(VAR_POOL_SIZE)
 ]
 
 
-def generate_random_data(obs_count: int, var_count: int) -> ad.AnnData:
+def generate_random_data(
+    obs_count: int, var_count: int, pert_count: int
+) -> tuple[ad.AnnData, list[PertSpec]]:
     global total_obs_count
     # create main body of data
     counts = spsparse.csr_matrix(
@@ -46,6 +43,14 @@ def generate_random_data(obs_count: int, var_count: int) -> ad.AnnData:
     # select random sample of genes from available var_pool (order maintained)
     var_idxs = sorted(random.sample(range(len(var_pool)), var_count))
     vars = [var_pool[i] for i in var_idxs]
+
+    pert_pool: list[PertSpec] = []
+    for var in vars:
+        for ptype in ("KO", "AC", "OE"):
+            pert_pool.append(PertSpec(ptype, var.label))
+
+    pert_idxs = sorted(random.sample(range(len(pert_pool)), pert_count))
+    perts = [pert_pool[i] for i in pert_idxs]
 
     # add obs and var labels
     adata.obs_names = [
@@ -71,4 +76,4 @@ def generate_random_data(obs_count: int, var_count: int) -> ad.AnnData:
 
     total_obs_count += adata.n_obs
 
-    return adata
+    return adata, perts

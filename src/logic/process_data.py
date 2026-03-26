@@ -1,29 +1,17 @@
-from dataclasses import dataclass
-from typing import Literal
-from uuid import UUID, uuid4
-import numpy as np
+import warnings
+
 import anndata as ad
+import numpy as np
 from pandas import DataFrame
 from scipy.sparse import csr_matrix
 
-from logic.generate_data import generate_random_data
+from logic.consts import EMBEDDING_LENGTH
+from logic.types import PertSpec
 from server.db import models
 
 
 def run_model(adata: ad.AnnData) -> np.ndarray:
-    return np.random.rand(adata.n_obs, 3) * 10 - 5
-
-
-class PTYPES:
-    KNOCKOUT = "KO"
-    ACTIVATION = "AC"
-    OVEREXPRESSION = "OE"
-
-
-@dataclass
-class PertSpec:
-    ptype: Literal["KO", "AC", "OE"]
-    gene: str
+    return np.random.rand(adata.n_obs, EMBEDDING_LENGTH) * 10 - 5
 
 
 def gen_perturbed_adata(
@@ -36,13 +24,16 @@ def gen_perturbed_adata(
         pert_adata_batch: list[tuple[PertSpec, ad.AnnData]] = []
         for spec in spec_batch:
             pert_adata = adata.copy()
-            match spec.ptype:
-                case "knockout":
-                    pert_adata[:, [spec.gene]] = 0
-                case "activation":
-                    pert_adata[:, [spec.gene]] = 2
-                case "overexpression":
-                    pert_adata[:, [spec.gene]] = 5
+            # ignoring csr inefficiency warning with regard to sparse
+            # matrix mutations since anndata not compatible with lil
+            with warnings.catch_warnings(action="ignore"):
+                match spec.ptype:
+                    case "KO":
+                        pert_adata[:, [spec.gene]] = 0
+                    case "AC":
+                        pert_adata[:, [spec.gene]] = 2
+                    case "OE":
+                        pert_adata[:, [spec.gene]] = 5
             pert_adata_batch.append((spec, pert_adata))
         yield pert_adata_batch
 
@@ -63,11 +54,7 @@ def pipeline(
     specs: list[PertSpec],
     batch_size: int,
 ):
-    adata_id = uuid4()
-
-    # save adata
-    print(adata_id, adata)
-
+    # add genes to db if not present
     assert isinstance(adata.var, DataFrame)
     genes: list[models.Gene] = []
     genes_dict: dict[str, models.Gene] = {}
@@ -77,6 +64,7 @@ def pipeline(
         genes.append(gene)
         genes_dict[g] = gene
 
+    # add cells to db if not present (including expression info and base embedding)
     assert isinstance(adata.obs, DataFrame)
     assert isinstance(adata.X, csr_matrix)
     cells: list[models.Cell] = []
@@ -92,16 +80,23 @@ def pipeline(
         ]
     ):
         # assuming cell label is unique and consistent without checking for now
-        cell, created = models.Cell.objects.get_or_create(label=c, type=t, donor=d)
+        cell, created = models.Cell.objects.get_or_create(
+            label=c,
+            defaults={"type": t, "donor": d},
+        )
         cells.append(cell)
         cells_dict[c] = cell
         if not created:
             continue
         models.Expression.objects.bulk_create(
             [
-                models.Expression(cell=cell, gene=genes[g_idxs[i]], val=vals[i])
+                models.Expression(cell=cell, gene=genes[g_idxs[i]], value=vals[i])
                 for i in range(len(vals))
             ]
+        )
+        zero_genes = [g for i, g in enumerate(genes) if i not in g_idxs]
+        models.Expression.objects.bulk_create(
+            [models.Expression(cell=cell, gene=g, value=0) for g in zero_genes]
         )
         models.Embedding.objects.create(
             cell=cell,
@@ -112,12 +107,13 @@ def pipeline(
         )
 
     pert_adata_batches = gen_perturbed_adata(adata, specs, batch_size)
+    # iterate through perturbations in batches to control mem footprint
     for pert_adata_batch in pert_adata_batches:
         pert_embs: list[models.Embedding] = []
         for pert_spec, pert_adata in pert_adata_batch:
             pert_emb_arr = run_model(pert_adata)
             pert_dist_arr = calc_cosine_dist(base_emb_arr, pert_emb_arr)
-            for c, dist, emb in np.column_stack(
+            for c, dist, *emb in np.column_stack(
                 [
                     pert_adata.obs_names.to_numpy(),
                     pert_dist_arr,
@@ -134,19 +130,12 @@ def pipeline(
                     )
                 )
 
+        # add embeddings in bulk once per batch
         models.Embedding.objects.bulk_create(pert_embs)
-
-
-def testing():
-    specs = [PertSpec("OE", "Gene_0001")]
-    adata = generate_random_data(3, 5)
-    pipeline(adata, specs, 10)
-
-
-testing()
 
 
 # NOTE:
 # - make example REST endpoints to put these functions together with generated data
 # - make graphQL endpoint to see data easily
+# - make dockerfile / compose file
 # - write up the stuff as per the problem statement
