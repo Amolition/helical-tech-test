@@ -15,6 +15,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "django-types>=0.23.0",
     "ipython>=9.11.0",
     "pandas-stubs>=3.0.0.260204",
     "scipy-stubs>=1.17.1.3",
@@ -26,7 +27,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["./src"]
-include = ["demo"]
+include = ["logic", "server"]
+
 
 [tool.basedpyright]
 typeCheckingMode = "standard"

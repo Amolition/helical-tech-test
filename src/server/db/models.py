@@ -1,4 +1,5 @@
 import uuid
+
 from django.db import models
 
 
@@ -43,9 +44,15 @@ class Embedding(BaseModel):
         ("NA", "None"),
     ]
     cell = models.ForeignKey(Cell, on_delete=models.PROTECT)
-    perturbation_gene = models.ForeignKey(Gene, on_delete=models.PROTECT)
+    perturbation_gene = models.ForeignKey(
+        Gene,
+        blank=True,
+        null=True,
+        on_delete=models.PROTECT,
+    )
     perturbation_type = models.CharField(
         max_length=2,
         choices=PERTURBATION_TYPE_CHOICES,
     )
     value = models.JSONField()
+    dist = models.FloatField()
