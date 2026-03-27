@@ -1,6 +1,6 @@
 # ISP Pipeline Design
 
-**Sections 1-6 relate to Part 1, whilst Sections 7-9 relate to Part 2.**
+**Sections 1-6 relate primarily to Part 1, whilst Sections 7-9 relate primarily to Part 2.**
 
 ## 1. Overview
 
@@ -8,7 +8,9 @@
 
 - **What is mocked**: Model inference is mocked (`run_model`) and returns random embeddings; no real foundation model integration. Data is saved to an ephemeral database that is destroyed when the container is shut down.
 
-- **What scale this demo uses**: The data scale can be varied using the fixed parameters in `src/logic/consts.py`, as well as by the parameters submitted to `POST /api/rest/demo`. It currently does not use any parallelism, but scope is present for concurrency gains through the `BATCH_SIZE` parameter. This also effectively controls the trade-off against maximum memory usage and concurrency.
+- **What scale this demo uses**: The data scale can be varied using fixed parameters in `src/logic/consts.py`, as well as request parameters submitted to `POST /api/rest/demo`. Perturbations are currently processed sequentially because each perturbation mutates a shared `AnnData` in-place and is then restored, which guarantees state isolation while keeping peak memory low.
+
+- **How to adapt for larger scales**: For larger workloads, the same logic can be parallelised by partitioning perturbation conditions across isolated workers, each handling a separate data shard and writing embeddings/distances asynchronously to shared storage.
 
 ## 2. Input Design
 
@@ -32,6 +34,8 @@
   - *UI browsing*: GraphQL types expose cells/genes/expressions/embeddings with filters and ordering, accessible via GraphiQL web-based GUI.
   - *Downstream analysis*: Embeddings and distances are queryable from DB via GraphQL requests, though storage format is not yet optimised for high-scale analytics.
 
+- **Storage scalability caveat**: Storing vectors in `Embedding.value` as `JSONField` is primarily a demo-friendly choice and is not optimal for large-scale analytical workloads (e.g. clustering or differential analysis); at production scale, embeddings would be better placed in columnar/object or vector-optimised storage with indexed references in the relational DB.
+
 ## 4. Memory & Trade-offs
 
 - **Peak memory during**:
@@ -45,6 +49,7 @@
   - *Memory vs speed*: in-place mutation greatly reduces RAM use compared with per-perturbation matrix copies, but adds per-iteration restore overhead.
   - *Execution model constraint*: The model needs to be run sequentially (not concurrently / in parallel) since only one perturbation exists at a time.
   - *DB throughput vs RAM*: batching writes with `bulk_create` improves insert performance but increases temporary memory usage as `batch_size` grows.
+  - *Semantic completeness vs storage cost*: The current persistence logic writes explicit zero-valued `Expression` rows so that "measured zero" is distinguishable from "not measured" for each cell-gene pair. This improves interpretability and query semantics, but increases write volume and storage footprint at larger scales. At larger scales, this can be replaced with sparse-only storage plus an explicit measurement-status flag (or equivalent metadata) to preserve semantic clarity with lower storage overhead.
 
 - **Practical implication**: peak matrix memory is close to "base matrix + one column backup", while most tunable memory pressure comes from embedding buffers and DB write batch size.
 
@@ -89,6 +94,8 @@
     ```
 
 ## 7. API Contract
+
+**Implementation Status**: The `/jobs` endpoints below are proposed architecture for production scale and are not implemented in the current codebase. The current implementation exposes `POST /api/rest/demo`, `GET /api/rest/healthcheck`, and GraphQL queries via `POST /api/gql`.
 
 ### Create Job
 - **Endpoint**: `POST /api/rest/jobs`
