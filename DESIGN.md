@@ -10,7 +10,9 @@
 
 - **What scale this demo uses**: Data scale can be varied using fixed parameters in `src/logic/consts.py` and request parameters submitted to `POST /api/rest/demo`. Perturbations are processed sequentially because each run mutates a shared `AnnData` in-place and then restores it. This preserves state isolation and keeps peak memory low.
 
-- **How to adapt for larger scales**: For larger workloads, the same logic can be parallelised by partitioning perturbation conditions across isolated workers. Each worker handles a separate data shard and writes embeddings/distances asynchronously to shared storage.
+- **How to adapt for larger scales**: For larger workloads, the same logic could be parallelised by partitioning perturbation conditions across isolated workers. Each worker handles a separate data shard and writes embeddings/distances asynchronously to shared storage.
+
+- **How to generate and inspect outputs**: Follow `README.md` to run the application with Docker, call `POST /api/rest/demo` to generate sample results, and inspect/query outputs via GraphQL (`POST /api/gql`) or the Django admin UI.
 
 ## 2. Input Design
 
@@ -32,7 +34,7 @@
 
 - **How results are organised for**:
   - *UI browsing*: GraphQL types expose cells/genes/expressions/embeddings with filters and ordering, accessible via GraphiQL web-based GUI.
-  - *Downstream analysis*: Embeddings and distances are queryable from the DB via GraphQL requests, though the storage format is not yet optimised for high-scale analytics.
+  - *Downstream analysis*: Embeddings and distances are queryable from the relational DB via GraphQL requests, though the storage format is not yet optimised for large-scale analytics.
 
 - **Storage scalability caveat**: Storing vectors in `Embedding.value` as `JSONField` is a demo-friendly choice, but it is not optimal for large-scale analytics (e.g. clustering or differential analysis). At production scale, embeddings would be better placed in columnar/object or vector-optimised storage, with indexed references in the relational DB.
 
@@ -43,6 +45,15 @@
   2. Perturbation run: one temporary backup of a single target gene column, the same shared `AnnData` mutated in-place, and one perturbed embedding array.
   3. Persistence phase: in-memory `Embedding` ORM objects accumulated per `batch_size` before bulk insert.
 
+- **Illustrative memory example**:
+  - *Assumptions*: `n_cells = 50,000`, `n_genes = 20,000`, embedding dim `= 512`, `float32` (`4 bytes/value`), `15,000` perturbation conditions.
+  - *One full expression matrix* (`50,000 x 20,000`) is ~`4.0 GB` dense (`50,000 * 20,000 * 4 bytes`), matching the task statement.
+  - *One embedding array per condition* (`50,000 x 512`) is ~`100 MB`.
+  - *Baseline + one perturbed embedding array in memory at once* is ~`200 MB` (excluding Python/ORM overhead).
+  - *If all perturbation embeddings were materialised simultaneously*, raw embedding payload would be ~`1.5 TB` (`100 MB * 15,000`), which motivates streaming/batched writes.
+  - *In-place perturbation memory profile*: Matrix memory remains near one shared base matrix + one temporary gene-column backup, instead of one full copied matrix per condition.
+  - *Distance-only footprint*: storing one `float32` distance per cell per condition is ~`3.0 GB` raw (`50,000 * 15,000 * 4 bytes`), far smaller than full embeddings but still non-trivial.
+
 - **Memory strategy**: Perturbations are applied to one gene column at a time on a shared matrix and then restored in a `try/finally` block, which avoids creating full `AnnData` copies per condition.
 
 - **Main trade-offs made**:
@@ -52,7 +63,7 @@
   - *Semantic completeness vs storage cost*: The persistence logic writes explicit zero-valued `Expression` rows so that "measured zero" is distinguishable from "not measured" for each cell-gene pair. This improves interpretability and query semantics, but increases write volume and storage footprint at larger scales.
   - *Potential optimisation path*: At larger scales, this can be replaced with sparse-only storage plus an explicit measurement-status flag (or equivalent metadata) to preserve semantic clarity with lower storage overhead.
 
-- **Practical implication**: Peak matrix memory is close to "base matrix + one column backup". Most tunable memory pressure comes from embedding buffers and DB write batch size.
+- **Practical implication**: Peak matrix memory is close to base matrix + one column backup. Most tunable memory pressure comes from embedding buffers and DB write batch size.
 
 ## 5. Pipeline Implementation
 
@@ -72,7 +83,7 @@
   - Paginate DB queries if suitable for the task, or stream data in chunks to the user.
   - Construct queries with filters lazily and evaluate all at once only when necessary.
 
-- **ORM optimisation notes**: Django ORM handles many memory and DB access optimisations. Further improvements could use manually written SQL for specific complex cases.
+- **ORM optimisation notes**: Django ORM handles many memory and DB access optimisations. Further improvements could include manually written SQL for specific complex cases.
 
 - **GraphQL data minimisation**: GraphQL allows users to specify exactly what information they want to avoid sending over excessive data.
   - *Example query* to retrieve embedding shifts (`dist`) where `Gene_X` has been knocked out (`KO`) for donor `Donor_3`'s T-cells (`T`):
@@ -103,18 +114,71 @@
 - **Request**: Dataset reference + perturbation list + optional filters.
 - **Response**: `job_id`, initial status (`queued`).
 
+- **Example request**:
+  ```json
+  {
+    "dataset_id": "demo_dataset_v1",
+    "perturbations": [
+      {"gene": "Gene_00010", "type": "KO"},
+      {"gene": "Gene_00042", "type": "OE"}
+    ],
+    "filters": {
+      "donor": ["Patient C"],
+      "cell_type": ["T"]
+    }
+  }
+  ```
+
+- **Example response**:
+  ```json
+  {
+    "job_id": "job_01JABCXYZ",
+    "status": "queued",
+    "submitted_at": "2026-03-27T12:00:00Z"
+  }
+  ```
+
 ### Check Status
 - **Endpoint**: `GET /api/rest/jobs/{job_id}`
 - **Response**: `status`, `progress`, timestamps, error (if failed).
 
+- **Example response**:
+  ```json
+  {
+    "job_id": "job_01JABCXYZ",
+    "status": "running",
+    "progress": 0.42,
+    "started_at": "2026-03-27T12:00:10Z",
+    "updated_at": "2026-03-27T12:02:00Z",
+    "error": null
+  }
+  ```
+
 ### Fetch Results
-- **Endpoint**: `GET /api/rest/jobs/{job_id}/results` or GraphQL interface `POST /api/gql`
+- **Endpoint**: `GET /api/rest/jobs/{job_id}/results` or the GraphQL interface `POST /api/gql`
 - **Filters**: `gene`, `perturbation_type`, `donor`, `cell_type`, `cursor`, `limit`.
 - **Response**: Paginated (if suitable) per-cell embeddings and distance metrics. For GraphQL, the endpoint consumer can request the exact desired data from the graph structure.
 
+- **Example response**:
+  ```json
+  {
+    "job_id": "job_01JABCXYZ",
+    "items": [
+      {
+        "cell_label": "Cell_000123",
+        "perturbation_gene": "Gene_00010",
+        "perturbation_type": "KO",
+        "dist": 0.183,
+        "embedding": [0.12, -0.44, 0.91, ...]
+      }
+    ],
+    "next_cursor": "cursor_abc123"
+  }
+  ```
+
 ## 8. Scalability Plan
 
-- **Queue + worker model**: The API enqueues perturbation jobs. Stateless workers (e.g. AWS Lambda) process perturbation batches and write outputs. This scales up and down for variable workloads.
+- **Queue + worker model**: The API enqueues perturbation jobs. Stateless workers (e.g. AWS Lambda) process perturbation batches and write outputs. This supports scaling up and down for variable workloads.
 
 - **Storage design for large jobs**: Metadata in a relational DB; large embedding matrices in columnar/object storage with references in DB. Regionally separated backups support disaster recovery.
 

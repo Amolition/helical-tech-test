@@ -11,7 +11,8 @@ from logic.consts import VAR_POOL_SIZE
 from logic.types import PertSpec, Var
 from server.db import models
 
-# track total_obs_count to ensure unique cell labels between data generations
+# track total_obs_count to ensure unique cell labels
+# between data generations for demo purposes
 total_obs_count = 0
 total_batch_count = 0
 try:
@@ -20,12 +21,8 @@ except OperationalError as err:
     print(err)
     latest_cell = None
 if latest_cell:
-    print("here")
-    print(latest_cell.batch)
     total_obs_count = int(latest_cell.label.replace("Cell_", "")) + 1
     total_batch_count = int(latest_cell.batch.replace("Batch_", "")) + 1
-print(total_obs_count)
-print(total_batch_count)
 
 
 # options for categorical metadata

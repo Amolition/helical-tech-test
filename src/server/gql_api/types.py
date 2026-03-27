@@ -122,7 +122,6 @@ class EmbeddingFilter:
 @strawberry_django.order_type(models.Embedding)
 class EmbeddingOrder:
     created_at: auto
-    label: auto
     perturbation_type: auto
     value: auto
     dist: auto
