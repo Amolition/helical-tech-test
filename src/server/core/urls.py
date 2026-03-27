@@ -19,7 +19,8 @@ from django.contrib import admin
 from django.contrib.auth.models import User
 from django.db import IntegrityError, OperationalError
 from django.urls import path
-
+from strawberry.django.views import AsyncGraphQLView
+from server.gql_api.schema import schema
 from server.rest_api.api import api
 
 try:
@@ -32,5 +33,6 @@ except OperationalError as err:
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/", api.urls),
+    path("api/rest/", api.urls),
+    path("api/gql/", AsyncGraphQLView.as_view(schema=schema)),
 ]

@@ -60,7 +60,10 @@ def pipeline(
     genes_dict: dict[str, models.Gene] = {}
     for g, s, c in np.column_stack([adata.var_names.to_numpy(), adata.var.to_numpy()]):
         # assuming gene label is unique and consistent without checking for now
-        gene, _ = models.Gene.objects.get_or_create(label=g, symbol=s, chromosome=c)
+        gene, _ = models.Gene.objects.get_or_create(
+            label=g,
+            defaults={"symbol": s, "chromosome": c},
+        )
         genes.append(gene)
         genes_dict[g] = gene
 
@@ -70,7 +73,7 @@ def pipeline(
     cells: list[models.Cell] = []
     cells_dict: dict[str, models.Cell] = {}
     base_emb_arr = run_model(adata)
-    for c, t, d, g_idxs, vals, *emb in np.column_stack(
+    for c, t, d, b, g_idxs, vals, *emb in np.column_stack(
         [
             adata.obs_names.to_numpy(),
             adata.obs.to_numpy(),
@@ -82,7 +85,7 @@ def pipeline(
         # assuming cell label is unique and consistent without checking for now
         cell, created = models.Cell.objects.get_or_create(
             label=c,
-            defaults={"type": t, "donor": d},
+            defaults={"type": t, "donor": d, "batch": b},
         )
         cells.append(cell)
         cells_dict[c] = cell

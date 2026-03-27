@@ -18,6 +18,9 @@ class Cell(BaseModel):
     donor = models.CharField(max_length=100)
     batch = models.CharField(max_length=100)
 
+    class Meta:  # pyright:ignore [reportIncompatibleVariableOverride]
+        ordering = ["label"]
+
 
 class Gene(BaseModel):
     CHROMOSOME_CHOICES = [
@@ -29,11 +32,17 @@ class Gene(BaseModel):
     symbol = models.CharField(max_length=10, unique=True)
     chromosome = models.CharField(max_length=2, choices=CHROMOSOME_CHOICES)
 
+    class Meta:  # pyright:ignore [reportIncompatibleVariableOverride]
+        ordering = ["label"]
+
 
 class Expression(BaseModel):
     cell = models.ForeignKey(Cell, related_name="expressions", on_delete=models.PROTECT)
     gene = models.ForeignKey(Gene, related_name="expressions", on_delete=models.PROTECT)
     value = models.FloatField()
+
+    class Meta:  # pyright:ignore [reportIncompatibleVariableOverride]
+        ordering = ["cell__label", "gene__label"]
 
 
 class Embedding(BaseModel):
@@ -61,3 +70,6 @@ class Embedding(BaseModel):
     )
     value = models.JSONField()
     dist = models.FloatField()
+
+    class Meta:  # pyright:ignore [reportIncompatibleVariableOverride]
+        ordering = ["cell__label", "perturbation_gene__label", "perturbation_type"]

@@ -17,17 +17,17 @@ class BaseAdmin(admin.ModelAdmin):
 
 @admin.register(Cell)
 class CellAdmin(BaseAdmin):
-    list_display = ["label", "type", "donor", "batch", "monospace_id"]
+    list_display = ["label", "type", "donor", "batch", "created_at", "monospace_id"]
 
 
 @admin.register(Gene)
 class GeneAdmin(BaseAdmin):
-    list_display = ["label", "symbol", "chromosome", "monospace_id"]
+    list_display = ["label", "symbol", "chromosome", "created_at", "monospace_id"]
 
 
 @admin.register(Expression)
 class ExpressionAdmin(BaseAdmin):
-    list_display = ["cell__label", "gene__label", "value", "monospace_id"]
+    list_display = ["cell__label", "gene__label", "value", "created_at", "monospace_id"]
 
 
 @admin.register(Embedding)
@@ -37,5 +37,6 @@ class EmbeddingAdmin(BaseAdmin):
         "perturbation_gene__label",
         "perturbation_type",
         "dist",
+        "created_at",
         "monospace_id",
     ]

@@ -10,6 +10,7 @@ def handle_err(fn: Callable[..., Any]):
         try:
             return fn(*args, **kwargs)
         except Exception as error:
+            print(error)
             return HttpResponseServerError(error)
 
     return wrapper
