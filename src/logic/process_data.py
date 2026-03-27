@@ -1,9 +1,7 @@
-import warnings
-
 import anndata as ad
 import numpy as np
 from pandas import DataFrame
-from scipy.sparse import csr_matrix
+from scipy.sparse import csc_matrix
 
 from logic.consts import EMBEDDING_LENGTH
 from logic.types import PertSpec
@@ -17,25 +15,25 @@ def run_model(adata: ad.AnnData) -> np.ndarray:
 def gen_perturbed_adata(
     adata: ad.AnnData,
     specs: list[PertSpec],
-    batch_size: int,
 ):
-    while specs:
-        spec_batch, specs = (specs[:batch_size], specs[batch_size:])
-        pert_adata_batch: list[tuple[PertSpec, ad.AnnData]] = []
-        for spec in spec_batch:
-            pert_adata = adata.copy()
-            # ignoring csr inefficiency warning with regard to sparse
-            # matrix mutations since anndata not compatible with lil
-            with warnings.catch_warnings(action="ignore"):
-                match spec.ptype:
-                    case "KO":
-                        pert_adata[:, [spec.gene]] = 0
-                    case "AC":
-                        pert_adata[:, [spec.gene]] = 2
-                    case "OE":
-                        pert_adata[:, [spec.gene]] = 5
-            pert_adata_batch.append((spec, pert_adata))
-        yield pert_adata_batch
+    for spec in specs:
+        # backup column to be mutated
+        orig = adata[:, spec.gene].X
+        assert isinstance(orig, csc_matrix)
+        orig_copy = orig.copy()
+        try:
+            # mutate column defined by spec in-place
+            match spec.ptype:
+                case "KO":
+                    adata[:, spec.gene] = 0
+                case "AC":
+                    adata[:, spec.gene] = 2
+                case "OE":
+                    adata[:, spec.gene] = 5
+            yield spec, adata
+        finally:
+            # restore column to original data
+            adata[:, spec.gene] = orig_copy
 
 
 def calc_cosine_dist(
@@ -69,7 +67,7 @@ def pipeline(
 
     # add cells to db if not present (including expression info and base embedding)
     assert isinstance(adata.obs, DataFrame)
-    assert isinstance(adata.X, csr_matrix)
+    assert isinstance(adata.X, csc_matrix)
     cells: list[models.Cell] = []
     cells_dict: dict[str, models.Cell] = {}
     base_emb_arr = run_model(adata)
@@ -109,9 +107,11 @@ def pipeline(
             dist=0,
         )
 
-    pert_adata_batches = gen_perturbed_adata(adata, specs, batch_size)
-    # iterate through perturbations in batches to control mem footprint
-    for pert_adata_batch in pert_adata_batches:
+    # iterate through perturbations in batches to control db access frequency
+    # in exchange for small mem tradeoff of holding extra embeddings before saving
+    while specs:
+        spec_batch, specs = (specs[:batch_size], specs[batch_size:])
+        pert_adata_batch = gen_perturbed_adata(adata, spec_batch)
         pert_embs: list[models.Embedding] = []
         for pert_spec, pert_adata in pert_adata_batch:
             pert_emb_arr = run_model(pert_adata)
@@ -135,10 +135,3 @@ def pipeline(
 
         # add embeddings in bulk once per batch
         models.Embedding.objects.bulk_create(pert_embs)
-
-
-# NOTE:
-# - make example REST endpoints to put these functions together with generated data
-# - make graphQL endpoint to see data easily
-# - make dockerfile / compose file
-# - write up the stuff as per the problem statement

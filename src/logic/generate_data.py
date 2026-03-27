@@ -53,7 +53,7 @@ def generate_random_data(
     global total_obs_count
     global total_batch_count
     # create main body of data
-    counts = spsparse.csr_matrix(
+    counts = spsparse.csc_matrix(
         np.random.poisson(1, size=(obs_count, var_count)),
         dtype=np.float32,
     )
