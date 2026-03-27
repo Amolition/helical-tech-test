@@ -6,7 +6,7 @@
 
 - **What this pipeline does**: Generate synthetic single-cell expression data, apply perturbations (`KO`/`AC`/`OE`), run a mock model to produce embeddings, and compute distances versus baseline.
 
-- **What is mocked**: Model inference is mocked (`run_model`) and returns random embeddings; no real foundation model integration. Data is saved to an ephemeral database that is destroyed when the container is shut down.
+- **What is mocked**: Model inference is mocked (`run_model`) and returns random embeddings; no real foundation model integration. Data is saved to an ephemeral database that is destroyed when the container is removed/recreated.
 
 - **What scale this demo uses**: Data scale can be varied using fixed parameters in `src/logic/consts.py` and request parameters submitted to `POST /api/rest/demo`. Perturbations are processed sequentially because each run mutates a shared `AnnData` in-place and then restores it. This preserves state isolation and keeps peak memory low.
 
@@ -155,7 +155,7 @@
   ```
 
 ### Fetch Results
-- **Endpoint**: `GET /api/rest/jobs/{job_id}/results` or the GraphQL interface `POST /api/gql`
+- **Endpoint**: `GET /api/rest/jobs/{job_id}/results` or GraphQL via `/api/gql` (GraphiQL UI in browser or POST requests)
 - **Filters**: `gene`, `perturbation_type`, `donor`, `cell_type`, `cursor`, `limit`.
 - **Response**: Paginated (if suitable) per-cell embeddings and distance metrics. For GraphQL, the endpoint consumer can request the exact desired data from the graph structure.
 
