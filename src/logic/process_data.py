@@ -1,4 +1,5 @@
 import anndata as ad
+from django.db import transaction
 import numpy as np
 from pandas import DataFrame
 from scipy.sparse import csc_matrix
@@ -61,7 +62,7 @@ def pipeline(
     print("Done")
 
     # add cells to DB if not present (including expression info and base embedding)
-    print("Adding Cells to DB...")
+    print("Processing Cells info...")
     cells: list[models.Cell] = []
     cells_dict: dict[str, models.Cell] = {}
     expressions: list[models.Expression] = []
@@ -87,7 +88,8 @@ def pipeline(
                 for i in range(len(vals))
             ]
         )
-        zero_genes = [g for i, g in enumerate(genes) if i not in g_idxs]
+        g_idx_set = set(g_idxs)
+        zero_genes = [g for i, g in enumerate(genes) if i not in g_idx_set]
         expressions.extend(
             [models.Expression(cell=cell, gene=g, value=0) for g in zero_genes]
         )
@@ -100,17 +102,22 @@ def pipeline(
                 dist=0,
             )
         )
-    models.Cell.objects.bulk_create(cells)
-    models.Expression.objects.bulk_create(expressions)
-    models.Embedding.objects.bulk_create(embeddings)
+    print("Done")
+    print("Adding Cells to DB...")
+    with transaction.atomic():
+        models.Cell.objects.bulk_create(cells, batch_size=2000)
+        models.Expression.objects.bulk_create(expressions, batch_size=2000)
+        models.Embedding.objects.bulk_create(embeddings, batch_size=2000)
     print("Done")
 
-    # modify batch size to take into the account number of cells per adata object
-    mod_batch_size = batch_size // len(cells)
+    # modify batch size to take into account number of cells per adata object
+    cells_count = max(1, len(cells))
+    mod_batch_size = max(1, batch_size // cells_count)
 
     # iterate through perturbations in batches to control db access frequency
     # in exchange for small mem tradeoff of holding extra embeddings before saving
     total_ops = len(specs) * len(cells)
+    progress_step = max(1, total_ops // 10)
     ops_count = 0
     batch_count = 0
     while specs:
@@ -118,11 +125,8 @@ def pipeline(
         pert_adata_batch = gen_perturbed_adata(adata, spec_batch)
         pert_embs: list[models.Embedding] = []
         for pert_spec, pert_adata in pert_adata_batch:
-            # print("run model...")
             pert_emb_arr = run_model(pert_adata)
-            # print("calc dist...")
             pert_dist_arr = calc_cosine_dist(base_emb_arr, pert_emb_arr)
-            # print("make embeddings...")
             for c, dist, *emb in np.column_stack(
                 [
                     pert_adata.obs_names.to_numpy(),
@@ -140,7 +144,7 @@ def pipeline(
                     )
                 )
                 ops_count += 1
-                if not ops_count % (total_ops // 10):
+                if not ops_count % progress_step:
                     print(f"progress: {ops_count / total_ops:.0%}")
 
         # add embeddings in bulk once per batch

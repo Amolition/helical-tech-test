@@ -8,7 +8,7 @@
 
 - **What is mocked**: Model inference is mocked (`run_model`) and returns random embeddings; no real foundation model integration. Data is saved to an ephemeral database that is destroyed when the container is removed/recreated.
 
-- **What scale this demo uses**: Data scale can be varied using fixed parameters in `src/logic/consts.py` and request parameters submitted to `POST /api/rest/demo`. Perturbations are processed sequentially because each run mutates a shared `AnnData` in-place and then restores it. This preserves state isolation and keeps peak memory low.
+- **What scale this demo uses**: Data scale can be varied using fixed parameters in `src/logic/consts.py` and request parameters submitted to `POST /api/rest/demo`. Perturbations are processed sequentially because each run mutates a shared `AnnData` in-place and then restores it. This preserves state isolation and keeps peak memory low. Local demo runs use reduced perturbation counts for practical execution time and DB size, while preserving the required `512`-dim embedding contract.
 
 - **How to adapt for larger scales**: For larger workloads, the same logic could be parallelised by partitioning perturbation conditions across isolated workers. Each worker handles a separate data shard and writes embeddings/distances asynchronously to shared storage.
 

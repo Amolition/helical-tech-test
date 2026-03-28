@@ -35,10 +35,22 @@ To access the OpenAPI docs, where you can run the demo endpoint, navigate to:
 
 > `http://localhost:8000/api/rest/docs`
 
-Run `POST /api/rest/demo` with query parameters, for example:
-- `obs=1000`
-- `vars=500`
-- `perts=1500`
+Run `POST /api/rest/demo` with query parameters.
+
+- **Recommended demo (default)**:
+  - `obs=1000`
+  - `vars=500`
+  - `perts=100`
+
+- **Larger demo (optional)**:
+  - `obs=1000`
+  - `vars=500`
+  - `perts=300`
+
+- **Stress test (optional, may be slow/fail on low-resource machines)**:
+  - `obs=1000`
+  - `vars=500`
+  - `perts=1500`
 
 ### 3) View outputs
 
@@ -61,3 +73,4 @@ You can log in with username: `admin`, and password: `1234`.
 - The current Docker setup is ephemeral by default. Data may be lost when the container is removed/recreated (for example after `docker compose down`).
 - If the database is empty, call `POST /api/rest/demo` again to generate fresh sample data.
 - For changes to code to be applied, the container will need to be rebuilt and launched with `docker compose up --build`. Beware that all data in the container will be lost.
+- With `512`-dim embeddings stored in SQLite `JSONField`, higher `perts` values substantially increase write time and DB size. For local runs, reduce `perts` first if performance degrades.
