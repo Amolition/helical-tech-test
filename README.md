@@ -15,7 +15,7 @@ Data is stored in an `SQLite` database via the Django ORM.
 
 From the repository root, start the application with:
 
-`docker compose up`
+`docker compose up --build`
 
 ## Usage
 
@@ -38,7 +38,7 @@ To access the OpenAPI docs, where you can run the demo endpoint, navigate to:
 Run `POST /api/rest/demo` with query parameters, for example:
 - `obs=1000`
 - `vars=500`
-- `perts=100`
+- `perts=1500`
 
 ### 3) View outputs
 
@@ -60,3 +60,4 @@ You can log in with username: `admin`, and password: `1234`.
 
 - The current Docker setup is ephemeral by default. Data may be lost when the container is removed/recreated (for example after `docker compose down`).
 - If the database is empty, call `POST /api/rest/demo` again to generate fresh sample data.
+- For changes to code to be applied, the container will need to be rebuilt and launched with `docker compose up --build`. Beware that all data in the container will be lost.
