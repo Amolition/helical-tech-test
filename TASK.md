@@ -1,6 +1,4 @@
-# Helical Software Development
-
-# Challenge
+# Helical Software Development Challenge
 
 ## In-Silico Perturbation Pipeline
 
@@ -124,8 +122,10 @@ Sketch the queue, worker, and storage design. What breaks first and how do you a
 Briefly describe how you'd containerise and deploy this (Docker, k8s, ECS — your choice). How
 do you handle GPU resource allocation for inference workers?
 
-**Submission**
+## Submission
+
 Push your work to a Git repository (GitHub, GitLab, or a zip). We expect:
+
 ```
 ├── README.md # How to run it, any setup notes
 ├── design.md # Your write-ups for Part 1 (design) and Part 2
@@ -136,7 +136,10 @@ Push your work to a Git repository (GitHub, GitLab, or a zip). We expect:
 ├── notebooks/ (optional) # Exploration, plots, query demos
 └── outputs/ (optional) # Sample results
 ```
+
 Spend your time where it counts. A clear design with simple working code beats an over-built
 framework with a vague write-up.
+
 If you have any questions, do not hesitate to ask via email! Good luck 🤗
+
 **Your Helical Team**
