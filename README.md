@@ -23,7 +23,7 @@ From the repository root, start the application with:
 
 Open:
 
-> `http://localhost:8000/api/rest/healthcheck`
+> http://localhost:8000/api/rest/healthcheck
 
 You should receive: `success`.
 
@@ -33,7 +33,7 @@ You should receive: `success`.
 
 To access the OpenAPI docs, where you can run the demo endpoint, navigate to:
 
-> `http://localhost:8000/api/rest/docs`
+> http://localhost:8000/api/rest/docs
 
 Run `POST /api/rest/demo` with query parameters.
 
@@ -58,13 +58,13 @@ Run `POST /api/rest/demo` with query parameters.
 
 To access the GraphiQL browser, where you can construct and test GraphQL queries, navigate to:
 
-> `http://localhost:8000/api/gql`
+> http://localhost:8000/api/gql
 
 **Django Admin**
 
 To access the Django Admin panel, where you can view SQLite database records and manually alter them, navigate to:
 
-> `http://localhost:8000/admin`
+> http://localhost:8000/admin
 
 You can log in with username: `admin`, and password: `1234`.
 
