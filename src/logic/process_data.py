@@ -52,25 +52,23 @@ def pipeline(
     specs: list[PertSpec],
     batch_size: int,
 ):
-    # add genes to db if not present
-    assert isinstance(adata.var, DataFrame)
-    genes: list[models.Gene] = []
-    genes_dict: dict[str, models.Gene] = {}
-    for g, s, c in np.column_stack([adata.var_names.to_numpy(), adata.var.to_numpy()]):
-        # assuming gene label is unique and consistent without checking for now
-        gene, _ = models.Gene.objects.get_or_create(
-            label=g,
-            defaults={"symbol": s, "chromosome": c},
-        )
-        genes.append(gene)
-        genes_dict[g] = gene
+    print("Pipeline activated")
 
-    # add cells to db if not present (including expression info and base embedding)
-    assert isinstance(adata.obs, DataFrame)
-    assert isinstance(adata.X, csc_matrix)
+    # retrieve genes from DB
+    print("Retrieving Genes from DB...")
+    genes = list(models.Gene.objects.filter(label__in=adata.var_names))
+    genes_dict = {g.label: g for g in genes}
+    print("Done")
+
+    # add cells to DB if not present (including expression info and base embedding)
+    print("Adding Cells to DB...")
     cells: list[models.Cell] = []
     cells_dict: dict[str, models.Cell] = {}
+    expressions: list[models.Expression] = []
     base_emb_arr = run_model(adata)
+    embeddings: list[models.Embedding] = []
+    assert isinstance(adata.obs, DataFrame)
+    assert isinstance(adata.X, csc_matrix)
     for c, t, d, b, g_idxs, vals, *emb in np.column_stack(
         [
             adata.obs_names.to_numpy(),
@@ -80,42 +78,51 @@ def pipeline(
             base_emb_arr,
         ]
     ):
-        # assuming cell label is unique and consistent without checking for now
-        cell, created = models.Cell.objects.get_or_create(
-            label=c,
-            defaults={"type": t, "donor": d, "batch": b},
-        )
+        cell = models.Cell(label=c, type=t, donor=d, batch=b)
         cells.append(cell)
         cells_dict[c] = cell
-        if not created:
-            continue
-        models.Expression.objects.bulk_create(
+        expressions.extend(
             [
                 models.Expression(cell=cell, gene=genes[g_idxs[i]], value=vals[i])
                 for i in range(len(vals))
             ]
         )
         zero_genes = [g for i, g in enumerate(genes) if i not in g_idxs]
-        models.Expression.objects.bulk_create(
+        expressions.extend(
             [models.Expression(cell=cell, gene=g, value=0) for g in zero_genes]
         )
-        models.Embedding.objects.create(
-            cell=cell,
-            perturbation_gene=None,
-            perturbation_type="NA",
-            value=emb,
-            dist=0,
+        embeddings.append(
+            models.Embedding(
+                cell=cell,
+                perturbation_gene=None,
+                perturbation_type="NA",
+                value=emb,
+                dist=0,
+            )
         )
+    models.Cell.objects.bulk_create(cells)
+    models.Expression.objects.bulk_create(expressions)
+    models.Embedding.objects.bulk_create(embeddings)
+    print("Done")
+
+    # modify batch size to take into the account number of cells per adata object
+    mod_batch_size = batch_size // len(cells)
 
     # iterate through perturbations in batches to control db access frequency
     # in exchange for small mem tradeoff of holding extra embeddings before saving
+    total_ops = len(specs) * len(cells)
+    ops_count = 0
+    batch_count = 0
     while specs:
-        spec_batch, specs = (specs[:batch_size], specs[batch_size:])
+        spec_batch, specs = (specs[:mod_batch_size], specs[mod_batch_size:])
         pert_adata_batch = gen_perturbed_adata(adata, spec_batch)
         pert_embs: list[models.Embedding] = []
         for pert_spec, pert_adata in pert_adata_batch:
+            # print("run model...")
             pert_emb_arr = run_model(pert_adata)
+            # print("calc dist...")
             pert_dist_arr = calc_cosine_dist(base_emb_arr, pert_emb_arr)
+            # print("make embeddings...")
             for c, dist, *emb in np.column_stack(
                 [
                     pert_adata.obs_names.to_numpy(),
@@ -132,6 +139,14 @@ def pipeline(
                         dist=dist,
                     )
                 )
+                ops_count += 1
+                if not ops_count % (total_ops // 10):
+                    print(f"progress: {ops_count / total_ops:.0%}")
 
         # add embeddings in bulk once per batch
+        batch_count += 1
+        print(f"Adding Embedding Batch #{batch_count} to DB...")
         models.Embedding.objects.bulk_create(pert_embs)
+        print("Done")
+
+    print("Pipeline Complete")
